@@ -1,0 +1,315 @@
+/* StudentPage.module.css */
+
+.nameInputOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.nameInputCard {
+  background: #fff;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  width: 90%;
+  max-width: 400px;
+}
+
+.nameInputCard h2 {
+  font-size: 1.8rem;
+  margin-bottom: 24px;
+  color: #333;
+}
+
+.nameInputCard input {
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.nameInputCard button {
+  background: #7c3aed;
+  color: white;
+  border: none;
+  padding: 12px 28px;
+  border-radius: 24px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.nameInputCard button:hover {
+  background: #5b21b6;
+}
+
+.wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #22223b;
+  color: #fff;
+  padding: 20px;
+}
+
+.dashboard {
+  max-width: 700px;
+  width: 100%;
+  background: #1a1a2e;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.badge {
+  background: #ede9fe;
+  color: #7c3aed;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 4px 14px;
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+/* Waiting State */
+.waitingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 60px 0;
+}
+
+.spinner {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid #fff;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.waitingTitle {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 0;
+}
+
+/* Poll Active State */
+.pollActiveState {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pollHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 24px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.questionNumber {
+  background: #2d2d44;
+  padding: 8px 16px;
+  border-radius: 8px;
+}
+
+.timer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #d946ef;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+}
+
+.timerIcon {
+  width: 16px;
+  height: 16px;
+  background-color: white; /* Placeholder for an actual icon */
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.questionText {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 32px;
+}
+
+.optionsList {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.optionLabel {
+  background: #2d2d44;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 18px 24px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.optionLabel:hover {
+  border-color: #6d28d9;
+}
+
+.optionInput[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #a1a1aa;
+  border-radius: 50%;
+  outline: none;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.optionInput[type="radio"]:checked {
+  background-color: #6d28d9;
+  border-color: #6d28d9;
+}
+
+.optionInput[type="radio"]:checked::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.optionText {
+  flex-grow: 1;
+  text-align: left;
+}
+
+.submitBtn {
+  background: #7c3aed;
+  color: white;
+  border: none;
+  padding: 14px 40px;
+  border-radius: 28px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: fit-content;
+}
+.submitBtn:hover:not(:disabled) {
+  background: #5b21b6;
+}
+.submitBtn:disabled {
+  background: #525263;
+  cursor: not-allowed;
+}
+
+/* Poll Results State */
+.pollResultsState {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.resultsDisplay {
+  width: 100%;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.resultBarContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.resultOptionText {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.progressBarWrapper {
+  width: 100%;
+  background: #2d2d44;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 40px; /* Adjust height as needed */
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.progressBar {
+  height: 100%;
+  background: linear-gradient(90deg, #6d28d9 0%, #a78bfa 100%);
+  border-radius: 8px 0 0 8px;
+  transition: width 0.5s ease-out;
+}
+
+.percentage {
+  position: absolute;
+  right: 15px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+.waitingForNext {
+  font-size: 1.2rem;
+  color: #a1a1aa;
+  margin-top: 40px;
+} 
