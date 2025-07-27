@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import styles from './StudentPage.module.css';
 import { io } from 'socket.io-client';
+import Chat from '../../components/Chat/Chat';
+import Participants from '../../components/Participants/Participants';
 
 const SOCKET_SERVER_URL = 'http://localhost:3001';
 
@@ -8,152 +10,114 @@ function StudentPage() {
   const [socket, setSocket] = useState(null);
   const [studentName, setStudentName] = useState(() => sessionStorage.getItem('studentName') || '');
   const [showNameInput, setShowNameInput] = useState(!sessionStorage.getItem('studentName'));
-  
-  // Server-driven states
+  const [isRegistered, setIsRegistered] = useState(false);
+
   const [currentPoll, setCurrentPoll] = useState(null);
-  const [selectedOption, setSelectedOption] = useState(null); // The option selected by this student (index)
-  const [pollResults, setPollResults] = useState(null);     // Results data (shown AFTER answering/poll end)
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [hasAnsweredLocally, setHasAnsweredLocally] = useState(false); // New state to prevent multiple local submissions
+  const [selectedOptionId, setSelectedOptionId] = useState(null); // Store ID of selected option
+  const [hasAnswered, setHasAnswered] = useState(false);
+  const [error, setError] = useState('');
+  const [timeLeft, setTimeLeft] = useState(0); // New state for countdown timer
+  const [lastPollResults, setLastPollResults] = useState(null); // New state for storing results of the last poll
+  const [endedPollDetails, setEndedPollDetails] = useState(null); // New state to store details of the poll that just ended
+  const [showSidePanel, setShowSidePanel] = useState(true); // State to control visibility of side panel
+  const [activeSidePanelTab, setActiveSidePanelTab] = useState('participants'); // 'chat' or 'participants'
+  const [isKickedOut, setIsKickedOut] = useState(false); // New state for kick out status
 
-  // Derived states for conditional rendering
-  const isWaitingForPoll = !currentPoll && !pollResults; // Showing spinner / 'wait for teacher'
-  const isPollActiveForStudent = !!currentPoll && !pollResults; // Showing poll question for answering
-  const isShowingResults = !!pollResults; // Showing poll results
-
+  // Socket connection and event handling
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(SOCKET_SERVER_URL);
+    const newSocket = io(SOCKET_SERVER_URL, {
+      transports: ['websocket', 'polling'],
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
       console.log('Connected to backend Socket.io server (Student)', newSocket.id);
-      if (studentName) {
-        newSocket.emit('registerClient', { role: 'student', name: studentName });
-      }
-    });
-
-    newSocket.on('initialPollState', (state) => {
-      console.log('Initial state received:', state);
-      if (state.currentPoll) {
-        // If there's an active poll, hide results and show the poll
-        setCurrentPoll(state.currentPoll);
-        setTimeLeft(state.timeLeft);
-        setPollResults(null); 
-        setSelectedOption(null);
-        setHasAnsweredLocally(false); // Reset for a new poll
-      } else if (state.pollHistory && state.pollHistory.length > 0) {
-        // If no active poll but history exists, a new student should just wait for a new poll
-        // No need to show previous results unless explicitly asked to (brownie points).
-        setCurrentPoll(null);
-        setPollResults(null);
-        setSelectedOption(null);
-        setHasAnsweredLocally(false); // Reset as no poll is active
-      } else {
-        // No active poll and no history (clean state)
-        setCurrentPoll(null);
-        setPollResults(null);
-        setSelectedOption(null);
-        setHasAnsweredLocally(false); // Reset
-      }
     });
 
     newSocket.on('newPoll', (poll) => {
       console.log('New poll received:', poll);
       setCurrentPoll(poll);
-      setSelectedOption(null); // Reset selected option for new poll
-      setPollResults(null);   // Crucial: hide results for new poll
-      setTimeLeft(poll.duration);
-      setHasAnsweredLocally(false); // A new poll means student hasn't answered it yet
-    });
+      setSelectedOptionId(null); // Reset selection for new poll
+      setHasAnswered(false);     // Reset answered status for new poll
+      setError('');             // Clear any previous errors
+      setLastPollResults(null); // Clear previous results on new poll
+      setEndedPollDetails(null); // Clear ended poll details on new poll
 
-    newSocket.on('pollStateUpdate', (state) => {
-      // This event primarily updates live timer for active poll
-      if (state.currentPoll && currentPoll && state.currentPoll.id === currentPoll.id) {
-        setTimeLeft(state.timeLeft);
-        // If student has answered, this updates their results live
-        if (isShowingResults) { // Only update if already in results view
-            const optionsWithLiveVotes = state.currentPoll.options.map(option => ({
-                ...option,
-                votes: state.pollResults[option.id] || 0
-            }));
-            setPollResults(prev => ({ ...prev, options: optionsWithLiveVotes }));
+      // Initialize timer for the new poll
+      const endTime = poll.startTime + poll.duration * 1000;
+      const interval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        setTimeLeft(remaining);
+        if (remaining === 0) {
+          clearInterval(interval);
         }
-      } else if (!state.currentPoll && currentPoll) {
-        // If a poll was active and became inactive (e.g. teacher ended it) but we didn't get pollEnded yet
-        // Or if the poll just finished naturally on the server
-        // This will trigger the transition to waiting state if no results yet
-        setCurrentPoll(null);
-        setPollResults(null); // Clear any partial results
-        setSelectedOption(null);
-        setHasAnsweredLocally(false); // Poll ended or became inactive
-      }
+      }, 1000);
+
+      return () => clearInterval(interval); // Clean up interval on component unmount or new poll
     });
 
-    newSocket.on('pollEnded', ({ finalResults, pollId }) => {
-      console.log(`Poll ${pollId} ended. Final results:`, finalResults);
-      // Ensure we have the full poll details to display results
-      if (currentPoll && currentPoll.id === pollId) {
-        const finalOptionsWithVotes = currentPoll.options.map(option => ({
-          ...option,
-          votes: finalResults[option.id] || 0
-        }));
-        setPollResults({ options: finalOptionsWithVotes, question: currentPoll.question }); // Include question for display
-        setCurrentPoll(null); // Mark poll as ended for student
-        setSelectedOption(null);
-        setHasAnsweredLocally(true); // Poll ended, student shouldn't answer again
-      } else if (isShowingResults) {
-        // If we are already showing results from a previous manual submission,
-        // update them with the server's final results.
-        setPollResults(prev => {
-          if (prev && prev.question === finalResults.question) { // Basic check if it's the same poll
-            const optionsWithLiveVotes = prev.options.map(option => ({
-              ...option,
-              votes: finalResults[option.id] || 0
-            }));
-            return { ...prev, options: optionsWithLiveVotes };
-          }
-          return prev; // Or re-fetch the specific poll by ID from history for accurate question
-        });
-        setCurrentPoll(null);
-        setSelectedOption(null);
-        setHasAnsweredLocally(true); // Poll ended, student shouldn't answer again
-      } else {
-        // If no current poll was active locally but server says poll ended, go to waiting
-        setCurrentPoll(null);
-        setPollResults(null);
-        setSelectedOption(null);
-        setHasAnsweredLocally(false); // No active poll
-      }
+    newSocket.on('pollEnded', ({ pollId, results, question, options }) => {
+      console.log(`Poll ${pollId} ended. Updating student UI.`, { pollId, results, question, options });
+      setCurrentPoll(null);
+      // Keep selectedOptionId to show what student chose, but set hasAnswered to true to prevent re-answering
+      // No, actually, we need to clear selectedOptionId for the next poll
+      setHasAnswered(false); // Reset answered status for new poll
+      setTimeLeft(0); // Reset timer when poll ends
+      setLastPollResults(results); // Store the received results
+      setEndedPollDetails({
+        id: pollId,
+        question: question,
+        options: options,
+      });
     });
 
     newSocket.on('error', (message) => {
-      alert(`Server Error: ${message}`);
+      setError(`Server Error: ${message}`);
       console.error('Server Error:', message);
     });
 
+    newSocket.on('disconnect', (reason) => {
+      console.log('Disconnected from backend Socket.io server (Student)', reason);
+      setCurrentPoll(null); // Clear poll on disconnect
+      setSelectedOptionId(null);
+      setHasAnswered(false);
+      setIsRegistered(false); // Reset registration status
+      // If the reason is not a manual kick (which we handle with 'kickedOut' event)
+      // then we might want to show a generic disconnected message.
+      // For now, only kickedOut will trigger specific UI
+    });
+
+    newSocket.on('kickedOut', ({ message }) => {
+      console.log('Student: Kicked out received:', message);
+      setIsKickedOut(true);
+      // Clear session storage to prevent immediate re-registration on refresh
+      sessionStorage.removeItem('studentName');
+      newSocket.disconnect(); // Ensure socket is fully disconnected
+    });
+
     return () => {
-      newSocket.off('connect');
-      newSocket.off('initialPollState');
-      newSocket.off('newPoll');
-      newSocket.off('pollStateUpdate');
-      newSocket.off('pollEnded');
-      newSocket.off('error');
       newSocket.disconnect();
-      console.log('Disconnected from backend Socket.io server (Student)');
     };
-  }, [studentName, isShowingResults]); // Added isShowingResults to dependency to ensure correct behavior
+  }, []); // Empty dependency array to run only once on mount
+
+  // Handle registration when socket and studentName are available
+  useEffect(() => {
+    if (socket && studentName && !isRegistered) {
+      console.log('StudentPage: Attempting to register client with name:', studentName);
+      socket.emit('registerClient', { role: 'student', name: studentName });
+      setIsRegistered(true);
+    }
+  }, [socket, studentName, isRegistered]);
 
   const handleSubmitAnswer = () => {
-    if (socket && currentPoll && selectedOption !== null) {
-      setHasAnsweredLocally(true); // Immediately disable submit button
-      const optionId = currentPoll.options[selectedOption].id;
-      socket.emit('submitAnswer', { pollId: currentPoll.id, optionId });
-      
-      // Transition to waiting state after submitting answer
-      setCurrentPoll(null); // Student has answered, hide poll form
-      setPollResults(null); // Ensure results view is not shown
-      setSelectedOption(null); // Reset selection
+    if (socket && currentPoll && selectedOptionId !== null && !hasAnswered) {
+      setError(''); // Clear previous errors
+      socket.emit('submitAnswer', { pollId: currentPoll.id, optionId: selectedOptionId });
+      setHasAnswered(true); // Mark as answered locally
+      // In a real app, you might optimistically update UI or wait for server confirmation
+    } else if (!selectedOptionId) {
+      setError('Please select an option before submitting.');
     }
   };
 
@@ -162,32 +126,27 @@ function StudentPage() {
     if (studentName.trim()) {
       sessionStorage.setItem('studentName', studentName.trim());
       setShowNameInput(false);
-      if (socket) {
+      // Register client immediately after name is submitted and stored
+      if (socket && !isRegistered) {
         socket.emit('registerClient', { role: 'student', name: studentName.trim() });
+        setIsRegistered(true);
       }
+    } else {
+      setError('Please enter your name.');
     }
   };
 
-  const getPercentage = (optionVotes, totalVotes) => {
-    return totalVotes === 0 ? 0 : Math.round((optionVotes / totalVotes) * 100);
-  };
-
-  const totalVotesInResults = isShowingResults ? pollResults.options.reduce((sum, o) => sum + o.votes, 0) : 0;
-
-  if (showNameInput) {
+  if (isKickedOut) {
     return (
-      <div className={styles.nameInputOverlay}>
-        <form onSubmit={handleNameSubmit} className={styles.nameInputCard}>
-          <h2>Enter Your Name</h2>
-          <input
-            type="text"
-            placeholder="Your Name"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-            required
-          />
-          <button type="submit">Start Polling</button>
-        </form>
+      <div className={styles.wrapper}>
+        <div className={styles.dashboard} style={{ textAlign: 'center' }}>
+          <span className={styles.badge}>Intervue Poll</span>
+          <h1 className={styles.bigTitle}>You've been Kicked out !</h1>
+          <p className={styles.subtitle}>
+            Looks like the teacher had removed you from the poll system. Please
+            Try again sometime.
+          </p>
+        </div>
       </div>
     );
   }
@@ -195,79 +154,124 @@ function StudentPage() {
   return (
     <div className={styles.wrapper}>
       <div className={styles.dashboard}>
-        {isWaitingForPoll && (
-          <div className={styles.waitingState}>
-            <span className={styles.badge}>Intervue Poll</span>
-            <div className={styles.spinner}></div>
-            <h1 className={styles.waitingTitle}>Wait for the teacher to ask questions..</h1>
-          </div>
-        )}
+        <span className={styles.badge}>Intervue Poll</span>
+        <h1 className={styles.bigTitle}>Student Dashboard</h1>
+        <p className={styles.subtitle}>
+          {currentPoll ? 'Active Poll' : (endedPollDetails ? 'Last Poll Results' : 'Waiting for teacher to start a poll...')}
+        </p>
 
-        {isPollActiveForStudent && (
-          <div className={styles.pollActiveState}>
-            <div className={styles.pollHeader}>
-              <span className={styles.questionNumber}>Question 1</span>
-              <div className={styles.timer}>
-                <span className={styles.timerIcon}></span>
-                {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
-              </div>
-            </div>
-            <h2 className={styles.questionText}>{currentPoll.question}</h2>
-            <div className={styles.optionsList}>
-              {currentPoll.options.map((option, idx) => (
-                <label key={option.id} className={styles.optionLabel}>
-                  <input
-                    type="radio"
-                    name="pollOption"
-                    value={option.id} // Use option.id for backend
-                    checked={selectedOption === idx}
-                    onChange={() => setSelectedOption(idx)}
-                    className={styles.optionRadio}
-                  />
-                  <span className={styles.optionText}>{option.text}</span>
-                </label>
-              ))}
-            </div>
+        {error && <p className={styles.errorMessage}>{error}</p>}
+
+        <div className={styles.mainContent}>
+          <div className={styles.pollSection}>
+            {showNameInput ? (
+              <form onSubmit={handleNameSubmit} className={styles.nameInputCard}>
+                <h2>Enter Your Name</h2>
+                <input
+                  type="text"
+                  placeholder="Your Name"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  required
+                />
+                <button type="submit">Start Polling</button>
+                {error && <p className={styles.errorMessage}>{error}</p>}
+              </form>
+            ) : (
+              <>
+                {currentPoll && !hasAnswered && (
+                  <div className={styles.activePoll}>
+                    <p className={styles.liveQuestion}><strong>Question:</strong> {currentPoll.question}</p>
+                    <div className={styles.optionsGrid}>
+                      {currentPoll.options.map((option) => (
+                        <button
+                          key={option.id}
+                          className={`${styles.optionButton} ${selectedOptionId === option.id ? styles.selected : ''}`}
+                          onClick={() => setSelectedOptionId(option.id)}
+                        >
+                          {option.text}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      className={styles.submitBtn}
+                      onClick={handleSubmitAnswer}
+                      disabled={selectedOptionId === null || hasAnswered}
+                    >
+                      Submit Answer
+                    </button>
+                    <p className={styles.statusMessage}>Time remaining: {timeLeft}s</p>
+                  </div>
+                )}
+
+                {currentPoll && hasAnswered && (
+                  <div className={styles.awaitingResults}>
+                    <h2>Thank You for Answering!</h2>
+                    <p>Waiting for the teacher to end the poll to see results.</p>
+                    <p className={styles.statusMessage}>You selected: {currentPoll.options.find(opt => opt.id === selectedOptionId)?.text}</p>
+                  </div>
+                )}
+
+                {!currentPoll && !showNameInput && endedPollDetails ? (
+                  <div className={styles.pollResultsDisplay}>
+                    <h2>Last Poll Results:</h2>
+                    <h3>Question: "{endedPollDetails.question}"</h3>
+                    {Array.isArray(endedPollDetails.options) && endedPollDetails.options.length > 0 ? (
+                      <ul>
+                        {endedPollDetails.options.map(option => (
+                          <li
+                            key={option.id}
+                            className={`${option.isCorrect ? styles.correctOption : styles.incorrectOption} ${selectedOptionId === option.id ? styles.selectedOptionStudent : ''}`}
+                          >
+                            {option.text}: {lastPollResults && lastPollResults[option.id] ? lastPollResults[option.id] : 0} votes
+                            {option.isCorrect ? ' (Correct)' : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No poll details available to display results.</p>
+                    )}
+                  </div>
+                ) : (
+                  // Original waiting state for students when no poll is active and no results to display
+                  <div className={styles.waitingState}>
+                    <h2>Waiting for teacher...</h2>
+                    <p>The teacher will start a new poll shortly.</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className={styles.sidePanelToggle}>
             <button
-              className={styles.submitBtn}
-              onClick={handleSubmitAnswer}
-              disabled={selectedOption === null || hasAnsweredLocally}
+              className={`${styles.toggleButton} ${showSidePanel && activeSidePanelTab === 'chat' ? styles.activeTab : ''}`}
+              onClick={() => setShowSidePanel(prev => !prev || activeSidePanelTab !== 'chat' ? (setActiveSidePanelTab('chat'), true) : false)}
             >
-              Submit
+              Chat
+            </button>
+            <button
+              className={`${styles.toggleButton} ${showSidePanel && activeSidePanelTab === 'participants' ? styles.activeTab : ''}`}
+              onClick={() => setShowSidePanel(prev => !prev || activeSidePanelTab !== 'participants' ? (setActiveSidePanelTab('participants'), true) : false)}
+            >
+              Participants
             </button>
           </div>
-        )}
 
-        {isShowingResults && (
-          <div className={styles.pollResultsState}>
-             <div className={styles.pollHeader}>
-              <span className={styles.questionNumber}>Question 1</span>
-              <div className={styles.timer}>
-                <span className={styles.timerIcon}></span>
-                00:00
+          {showSidePanel && (
+            <div className={styles.sidePanel}>
+              <div className={`${styles.chatTabContent} ${activeSidePanelTab === 'chat' ? styles.activeTabContent : styles.hiddenTabContent}`}>
+                <Chat socket={socket} senderId={socket?.id} senderName={studentName || 'Anonymous'} senderRole="student" />
+              </div>
+              <div className={`${styles.participantsTabContent} ${activeSidePanelTab === 'participants' ? styles.activeTabContent : styles.hiddenTabContent}`}>
+                <Participants socket={socket} userRole="student" />
               </div>
             </div>
-            <h2 className={styles.questionText}>{pollResults.question || "Poll Results"}</h2>
-            <div className={styles.resultsDisplay}>
-              {pollResults.options.map((option) => (
-                <div key={option.id} className={styles.resultBarContainer}>
-                  <span className={styles.resultOptionText}>{option.text}</span>
-                  <div className={styles.progressBarWrapper}>
-                    <div
-                      className={styles.progressBar}
-                      style={{ width: `${getPercentage(option.votes, totalVotesInResults)}%` }}
-                    ></div>
-                    <span className={styles.percentage}>{getPercentage(option.votes, totalVotesInResults)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className={styles.waitingForNext}>Wait for the teacher to ask a new question...</p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-export default StudentPage; 
+export default StudentPage;

@@ -3,7 +3,7 @@
 .nameInputOverlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 50%;
   width: 100vw;
   height: 100vh;
   background: rgba(0, 0, 0, 0.6);
@@ -56,6 +56,7 @@
 
 .wrapper {
   min-height: 100vh;
+  width: 100vw;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -65,7 +66,7 @@
 }
 
 .dashboard {
-  max-width: 700px;
+  max-width: 1000px; /* Increased max-width for side panel */
   width: 100%;
   background: #1a1a2e;
   border-radius: 12px;
@@ -75,6 +76,78 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
+}
+
+.mainContent {
+  display: flex;
+  flex-direction: row; /* Default to row layout for main content */
+  gap: 30px;
+  width: 100%;
+}
+
+.pollSection {
+  flex: 2; /* Takes up more space for poll content */
+  display: flex;
+  flex-direction: column;
+}
+
+.sidePanelToggle {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-left: auto; /* Push buttons to the right */
+}
+
+.toggleButton {
+  background: #2d2d44;
+  color: #7c3aed;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.toggleButton:hover {
+  background: #3e3e5a;
+}
+
+.toggleButton.activeTab {
+  background: #7c3aed;
+  color: white;
+}
+
+.sidePanel {
+  flex: 1; /* Takes up remaining space for side panel */
+  min-width: 280px; /* Minimum width for side panel */
+  max-width: 350px;
+  border-left: 1px solid #3e3e5a;
+  padding-left: 30px;
+  display: flex;
+  flex-direction: column;
+  position: relative; /* Needed for absolute positioning of hidden content */
+}
+
+.chatTabContent,
+.participantsTabContent {
+  width: 100%;
+  height: 100%; /* Ensure content takes full height of panel */
+  position: absolute; /* Position content absolutely within panel */
+  top: 0;
+  left: 0;
+  padding-left: 30px; /* Adjust padding to match sidePanel */
+  box-sizing: border-box; /* Include padding in width/height */
+}
+
+.hiddenTabContent {
+  display: none; /* Hide inactive tab content */
+}
+
+.activeTabContent {
+  display: flex; /* Show active tab content */
+  flex-direction: column; /* Ensure vertical layout for chat/participants */
 }
 
 .badge {
@@ -97,138 +170,72 @@
   padding: 60px 0;
 }
 
-.spinner {
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top: 4px solid #fff;
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.waitingTitle {
+.bigTitle {
   font-size: 2.2rem;
   font-weight: 700;
   color: #fff;
   margin-top: 0;
+  margin-bottom: 8px;
 }
 
-/* Poll Active State */
-.pollActiveState {
+.subtitle {
+  color: #a1a1aa;
+  font-size: 1.1rem;
+  margin-bottom: 0;
+}
+
+/* Active Poll State - New classes */
+.activePoll {
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.pollHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  margin-bottom: 24px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #a1a1aa;
-}
-
-.questionNumber {
-  background: #2d2d44;
-  padding: 8px 16px;
-  border-radius: 8px;
-}
-
-.timer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #d946ef;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 8px;
-}
-
-.timerIcon {
-  width: 16px;
-  height: 16px;
-  background-color: white; /* Placeholder for an actual icon */
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.questionText {
+.liveQuestion {
   font-size: 1.8rem;
   font-weight: 600;
   color: #fff;
   margin-bottom: 32px;
+  line-height: 1.4;
 }
 
-.optionsList {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
+.optionsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 16px;
+  width: 100%;
   margin-bottom: 32px;
 }
 
-.optionLabel {
+@media (min-width: 600px) {
+  .optionsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.optionButton {
   background: #2d2d44;
   border: 2px solid transparent;
   border-radius: 10px;
   padding: 18px 24px;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 16px;
   color: #fff;
   font-size: 1.1rem;
   font-weight: 500;
-}
-
-.optionLabel:hover {
-  border-color: #6d28d9;
-}
-
-.optionInput[type="radio"] {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  border: 2px solid #a1a1aa;
-  border-radius: 50%;
-  outline: none;
-  cursor: pointer;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.optionInput[type="radio"]:checked {
-  background-color: #6d28d9;
-  border-color: #6d28d9;
-}
-
-.optionInput[type="radio"]:checked::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border-radius: 50%;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.optionText {
-  flex-grow: 1;
   text-align: left;
+  width: 100%;
+}
+
+.optionButton:hover {
+  border-color: #6d28d9;
+  background: #3e3e5a;
+}
+
+.optionButton.selected {
+  border-color: #7c3aed;
+  background: #5b21b6;
 }
 
 .submitBtn {
@@ -242,6 +249,7 @@
   cursor: pointer;
   transition: background 0.2s;
   width: fit-content;
+  margin-bottom: 20px;
 }
 .submitBtn:hover:not(:disabled) {
   background: #5b21b6;
@@ -251,23 +259,45 @@
   cursor: not-allowed;
 }
 
-/* Poll Results State */
-.pollResultsState {
+.timeLeft {
+  font-size: 1rem;
+  color: #a1a1aa;
+  font-weight: 500;
+}
+
+/* Poll Results State - New/Updated classes */
+.resultsDisplay {
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  text-align: center;
+  padding: 0;
+  margin-top: 0;
 }
 
-.resultsDisplay {
+.resultsTitle {
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.totalVotes {
+  font-size: 1.1rem;
+  color: #a1a1aa;
+  margin-bottom: 24px;
+}
+
+.resultsBarContainer {
   width: 100%;
-  margin-top: 24px;
+  margin-top: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.resultBarContainer {
+.resultItem {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -283,10 +313,10 @@
 
 .progressBarWrapper {
   width: 100%;
-  background: #2d2d44;
+  background: #3e3e5a;
   border-radius: 8px;
   overflow: hidden;
-  height: 40px; /* Adjust height as needed */
+  height: 36px;
   display: flex;
   align-items: center;
   position: relative;
@@ -294,7 +324,7 @@
 
 .progressBar {
   height: 100%;
-  background: linear-gradient(90deg, #6d28d9 0%, #a78bfa 100%);
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
   border-radius: 8px 0 0 8px;
   transition: width 0.5s ease-out;
 }
@@ -308,8 +338,134 @@
   text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
 }
 
-.waitingForNext {
-  font-size: 1.2rem;
+.voteCount {
+  position: absolute;
+  left: 15px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+.answeredMessage {
+  font-size: 1.05rem;
+  color: #22c55e;
+  font-weight: 600;
+  margin-top: 24px;
+}
+
+/* New styles for awaiting results layout */
+.awaitingResultsLayout {
+  display: flex;
+  flex-direction: column; /* Default to column on small screens */
+  gap: 30px;
+  width: 100%;
+  align-items: flex-start; /* Align items to start for cleaner look */
+}
+
+@media (min-width: 768px) {
+  .awaitingResultsLayout {
+    flex-direction: row; /* Row layout on larger screens */
+    align-items: flex-start; /* Align items to start */
+    justify-content: space-between;
+  }
+}
+
+.awaitingResultsInfo {
+  flex: 1; /* Takes up available space */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding-right: 20px; /* Space between info and data */
+}
+
+.awaitingResultsData {
+  flex: 2; /* Takes up more space for results bars */
+  width: 100%; /* Ensure it takes full width within its flex item */
+}
+
+.awaitingResults {
+  font-size: 1.05rem;
   color: #a1a1aa;
-  margin-top: 40px;
+  font-weight: 500;
+  margin-top: 24px;
+}
+
+/* Adjust existing styles to fit new layout if necessary */
+.resultsDisplay .liveQuestion, 
+.resultsDisplay .resultsTitle, 
+.resultsDisplay .totalVotes {
+  text-align: left; /* Align these to the left within their container */
+  width: 100%;
+}
+
+/* Ensure the badge is centered, if it's used here, which it's not currently in this layout */
+.resultsDisplay .badge {
+  margin: 0 auto 16px auto; 
+}
+
+/* New styles for poll results display on student page */
+.pollResultsDisplay {
+  margin-top: 24px;
+  padding: 20px;
+  background: #1a1a2e;
+  border: 1px solid #3e3e5a;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  text-align: center;
+  width: 100%;
+}
+
+.pollResultsDisplay h2 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+.pollResultsDisplay h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+.pollResultsDisplay ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+}
+
+.pollResultsDisplay li {
+  background: #2d2d44;
+  border-radius: 8px;
+  padding: 12px 15px;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+  color: #fff;
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid transparent; /* Default border */
+}
+
+.pollResultsDisplay li:last-child {
+  margin-bottom: 0;
+}
+
+.correctOption {
+  background-color: #10b981; /* Green */
+  border-color: #059669; /* Darker green border */
+}
+
+.incorrectOption {
+  background-color: #ef4444; /* Red */
+  border-color: #b91c1c; /* Darker red border */
+}
+
+.selectedOptionStudent {
+  border: 2px solid #7c3aed; /* Highlight for student's chosen option */
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.5); /* Glow effect */
 } 

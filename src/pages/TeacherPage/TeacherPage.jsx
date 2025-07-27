@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import styles from './TeacherPage.module.css';
 import { io } from 'socket.io-client';
+import Chat from '../../components/Chat/Chat';
+import Participants from '../../components/Participants/Participants';
 
 const DURATION_OPTIONS = [30, 45, 60, 90, 120];
 const MAX_QUESTION_LENGTH = 100;
@@ -14,97 +16,80 @@ function TeacherPage() {
     { text: '', isCorrect: null },
     { text: '', isCorrect: null },
   ]);
-  
-  // Server-driven states
-  const [currentPoll, setCurrentPoll] = useState(null);
-  const [pollResults, setPollResults] = useState({});
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [studentsAnswered, setStudentsAnswered] = useState(0);
-  const [pollHistory, setPollHistory] = useState([]);
-
-  const pollActive = !!currentPoll; // Determine if a poll is active based on server data
+  const [currentPoll, setCurrentPoll] = useState(null); // To show if a poll is active
+  const [error, setError] = useState('');
+  const [timeLeft, setTimeLeft] = useState(0); // New state for countdown timer
+  const [lastPollResults, setLastPollResults] = useState(null); // State for storing results of the last poll
+  const [endedPollDetails, setEndedPollDetails] = useState(null); // State to store details of the poll that just ended
+  const [showSidePanel, setShowSidePanel] = useState(true); // State to control visibility of side panel
+  const [activeSidePanelTab, setActiveSidePanelTab] = useState('participants'); // 'chat' or 'participants'
 
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(SOCKET_SERVER_URL);
+    console.log('TeacherPage: Initializing socket connection and listeners.');
+    const newSocket = io(SOCKET_SERVER_URL, {
+      transports: ['websocket', 'polling'],
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
       console.log('Connected to backend Socket.io server (Teacher)', newSocket.id);
       newSocket.emit('registerClient', { role: 'teacher' });
-      newSocket.emit('requestPollHistory'); // Request history on connect
-    });
-
-    newSocket.on('initialPollState', (state) => {
-      setCurrentPoll(state.currentPoll);
-      setPollResults(state.pollResults);
-      setTimeLeft(state.timeLeft);
-      setTotalStudents(state.totalStudents);
-      setStudentsAnswered(state.studentsAnswered);
-      // pollHistory is sent with initial state
-      if (state.pollHistory) {
-        setPollHistory(state.pollHistory);
-      }
-    });
-
-    newSocket.on('pollStateUpdate', (state) => {
-      setCurrentPoll(state.currentPoll);
-      setPollResults(state.pollResults);
-      setTimeLeft(state.timeLeft);
-      setTotalStudents(state.totalStudents);
-      setStudentsAnswered(state.studentsAnswered);
     });
 
     newSocket.on('newPoll', (poll) => {
+      console.log('Teacher: Received newPoll event.', poll);
       setCurrentPoll(poll);
-      setPollResults(poll.options.reduce((acc, opt) => { acc[opt.id] = 0; return acc; }, {}));
-      setTimeLeft(poll.duration);
-      setStudentsAnswered(0); // Reset for new poll
+      setQuestion(poll.question);
+      setOptions(poll.options.map(opt => ({ id: opt.id, text: opt.text, isCorrect: opt.isCorrect }))); // Ensure id is passed
+      setDuration(poll.duration);
+      setError(''); // Clear any previous errors on new poll
+      setLastPollResults(null); // Clear previous results when a new poll starts
+      setEndedPollDetails(null); // Clear ended poll details for new poll
+
+      // Initialize timer for the new poll
+      const endTime = poll.startTime + poll.duration * 1000;
+      const interval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+        setTimeLeft(remaining);
+        if (remaining === 0) {
+          clearInterval(interval);
+        }
+      }, 1000);
+
+      return () => clearInterval(interval); // Clean up interval on component unmount or new poll
     });
 
-    newSocket.on('pollEnded', ({ finalResults, pollId }) => {
-      console.log(`Poll ${pollId} ended with final results:`, finalResults);
-      setPollHistory(prevHistory => {
-        const updatedHistory = prevHistory.map(poll => 
-          poll.id === pollId ? { ...poll, results: finalResults } : poll
-        );
-        if (!updatedHistory.some(poll => poll.id === pollId) && currentPoll && currentPoll.id === pollId) {
-          updatedHistory.push({ ...currentPoll, results: finalResults, timestamp: Date.now() });
-        }
-        return updatedHistory;
-      });
+    newSocket.on('pollEnded', ({ pollId, results, question, options }) => {
+      console.log('Teacher: pollEnded received:', { pollId, results, question, options });
       setCurrentPoll(null);
-      setPollResults({});
-      setTimeLeft(0);
-      setStudentsAnswered(0);
-      setQuestion(''); // Clear form for next poll
+      setQuestion('');
       setOptions([
         { text: '', isCorrect: null },
         { text: '', isCorrect: null },
       ]);
       setDuration(60);
-    });
-
-    newSocket.on('pollHistoryUpdate', (history) => {
-      setPollHistory(history);
+      setTimeLeft(0); // Reset timer when poll ends
+      setLastPollResults(results); // Store the received results
+      setEndedPollDetails({
+        id: pollId,
+        question: question,
+        options: options,
+      });
     });
 
     newSocket.on('error', (message) => {
-      alert(`Server Error: ${message}`);
+      setError(`Server Error: ${message}`);
       console.error('Server Error:', message);
     });
 
+    newSocket.on('disconnect', (reason) => {
+      console.log('Disconnected from backend Socket.io server (Teacher)', reason);
+      setCurrentPoll(null); // Clear poll on disconnect
+    });
+
     return () => {
-      newSocket.off('connect');
-      newSocket.off('initialPollState');
-      newSocket.off('pollStateUpdate');
-      newSocket.off('newPoll');
-      newSocket.off('pollEnded');
-      newSocket.off('pollHistoryUpdate');
-      newSocket.off('error');
       newSocket.disconnect();
-      console.log('Disconnected from backend Socket.io server (Teacher)');
     };
   }, []);
 
@@ -116,8 +101,12 @@ function TeacherPage() {
 
   const handleCorrectChange = (idx, isCorrect) => {
     const newOptions = [...options];
-    newOptions[idx].isCorrect = isCorrect;
-    setOptions(newOptions);
+    // Ensure only one option can be correct
+    const updatedOptions = newOptions.map((opt, currentIdx) => ({
+      ...opt,
+      isCorrect: currentIdx === idx ? isCorrect : (isCorrect ? null : opt.isCorrect) // If setting true, others become null
+    }));
+    setOptions(updatedOptions);
   };
 
   const addOption = () => setOptions([...options, { text: '', isCorrect: null }]);
@@ -132,177 +121,189 @@ function TeacherPage() {
     question.trim() &&
     options.length >= 2 &&
     options.every(opt => opt.text.trim()) &&
-    options.some(opt => opt.isCorrect !== null);
+    options.some(opt => opt.isCorrect === true); // At least one option must be explicitly correct
 
   const handleAskQuestion = () => {
-    if (!socket) return;
+    if (!socket || !canAsk) return;
+    setError(''); // Clear previous errors
     socket.emit('createPoll', {
       question,
       options,
       duration,
     });
-    // Form will be reset by initialPollState or pollStateUpdate from server (or pollEnded for history)
+    console.log('Teacher: Emitted createPoll event.');
   };
 
   const handleEndPoll = () => {
-    if (!socket || !currentPoll) return;
-    socket.emit('endPoll');
+    console.log('Teacher: handleEndPoll called.');
+    if (socket) {
+      socket.emit('endPoll');
+      console.log('Teacher: Emitted endPoll event.');
+    } else {
+      console.log('Teacher: Socket not available to emit endPoll.');
+    }
   };
-
-  const getPercentage = (optionId) => {
-    const totalVotes = Object.values(pollResults).reduce((sum, count) => sum + count, 0);
-    const votesForOption = pollResults[optionId] || 0;
-    return totalVotes === 0 ? 0 : Math.round((votesForOption / totalVotes) * 100);
-  };
-
-  const allStudentsAnswered = totalStudents > 0 && studentsAnswered === totalStudents;
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.dashboard}>
-        <div className={styles.headerRow}>
-          <span className={styles.badge}>Intervue Poll</span>
-        </div>
+        <span className={styles.badge}>Intervue Poll</span>
         <h1 className={styles.bigTitle}>Teacher Dashboard</h1>
         <p className={styles.subtitle}>
-          Create polls, view live results, and manage the classroom in real-time.
+          Create polls for your students.
         </p>
 
-        {/* Conditional rendering based on pollActive status from server */}
-        {!pollActive ? (
-          <> {/* Poll Creation Form */}
-            <div className={styles.formSection}>
-              <div className={styles.formRow}>
-                <label className={styles.label} htmlFor="question">Enter your question</label>
-                <select
-                  className={styles.durationSelect}
-                  value={duration}
-                  onChange={e => setDuration(Number(e.target.value))}
+        {error && <p className={styles.errorMessage}>{error}</p>}
+
+        <div className={styles.mainContent}>
+          <div className={styles.pollSection}>
+            {currentPoll ? (
+              <div className={styles.activePollStatus}>
+                <h2>Active Poll: "{currentPoll.question}"</h2>
+                <p>Poll is active for {timeLeft} seconds.</p>
+                <p>Waiting for students to answer...</p>
+                <button
+                  onClick={handleEndPoll}
+                  className={styles.endPollBtn}
                 >
-                  {DURATION_OPTIONS.map(opt => (
-                    <option key={opt} value={opt}>{opt} seconds</option>
-                  ))}
-                </select>
-              </div>
-              <textarea
-                id="question"
-                className={styles.textarea}
-                placeholder="Type your question here..."
-                value={question}
-                onChange={handleQuestionChange}
-                maxLength={MAX_QUESTION_LENGTH}
-              />
-              <div className={styles.charCount}>{question.length}/{MAX_QUESTION_LENGTH}</div>
-            </div>
-
-            <div className={styles.optionsSection}>
-              <div className={styles.optionsHeaderRow}>
-                <span className={styles.optionsHeader}>Edit Options</span>
-                <span className={styles.optionsHeader}>Is it Correct?</span>
-              </div>
-              {options.map((opt, idx) => (
-                <div className={styles.optionRow} key={idx}>
-                  <input
-                    className={styles.optionInput}
-                    type="text"
-                    placeholder={`Option ${idx + 1}`}
-                    value={opt.text}
-                    onChange={e => handleOptionChange(idx, e.target.value)}
-                    maxLength={50}
-                  />
-                  <div className={styles.radioGroup}>
-                    <label className={styles.radioLabel}>
-                      <input
-                        type="radio"
-                        name={`correct-${idx}`}
-                        checked={opt.isCorrect === true}
-                        onChange={() => handleCorrectChange(idx, true)}
-                      />
-                      Yes
-                    </label>
-                    <label className={styles.radioLabel}>
-                      <input
-                        type="radio"
-                        name={`correct-${idx}`}
-                        checked={opt.isCorrect === false}
-                        onChange={() => handleCorrectChange(idx, false)}
-                      />
-                      No
-                    </label>
-                  </div>
-                </div>
-              ))}
-              <button className={styles.addOptionBtn} onClick={addOption}>
-                + Add More option
-              </button>
-            </div>
-
-            <div className={styles.footerRow}>
-              <button
-                className={styles.askBtn}
-                onClick={handleAskQuestion}
-                disabled={!canAsk}
-              >
-                Ask Question
-              </button>
-            </div>
-          </>
-        ) : (
-          <> {/* Live Poll Results Display */}
-            <div className={styles.livePollDisplay}>
-              <h2>Live Poll Results</h2>
-              <p className={styles.liveQuestion}><strong>Question:</strong> {currentPoll.question}</p>
-              <div className={styles.liveResultsSummary}>
-                <span>Time Left: {timeLeft < 10 ? `0${timeLeft}` : timeLeft}s</span>
-                <span>Students Answered: {studentsAnswered} / {totalStudents}</span>
-                {allStudentsAnswered && (
-                  <span className={styles.allAnsweredMsg}>All students answered!</span>
-                )}
-              </div>
-              <div className={styles.resultsDisplay}>
-                {currentPoll.options.map((option) => (
-                  <div key={option.id} className={styles.resultBarContainer}>
-                    <span className={styles.resultOptionText}>{option.text}</span>
-                    <div className={styles.progressBarWrapper}>
-                      <div
-                        className={styles.progressBar}
-                        style={{ width: `${getPercentage(option.id)}%` }}
-                      ></div>
-                      <span className={styles.percentage}>{getPercentage(option.id)}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className={styles.footerRow}>
-                <button onClick={handleEndPoll} className={styles.endPollBtn}>
                   End Poll
                 </button>
               </div>
-            </div>
-          </>
-        )}
+            ) : (
+              <>
+                {endedPollDetails ? (
+                  <div className={styles.pollResultsDisplay}>
+                    <h2>Last Poll Results:</h2>
+                    <h3>Question: "{endedPollDetails.question}"</h3>
+                    {Array.isArray(endedPollDetails.options) && endedPollDetails.options.length > 0 ? (
+                      <ul>
+                        {endedPollDetails.options.map(option => (
+                          <li key={option.id} className={option.isCorrect ? styles.correctOption : styles.incorrectOption}>
+                            {option.text}: {lastPollResults && lastPollResults[option.id] ? lastPollResults[option.id] : 0} votes
+                            {option.isCorrect ? ' (Correct)' : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No poll details available to display results.</p>
+                    )}
+                    <button
+                      onClick={() => {
+                        setLastPollResults(null);
+                        setEndedPollDetails(null); // Clear ended poll details
+                        setQuestion(''); // Reset question
+                        setOptions([
+                          { text: '', isCorrect: null },
+                          { text: '', isCorrect: null },
+                        ]); // Reset options
+                        setDuration(60); // Reset duration
+                      }}
+                      className={styles.clearResultsBtn}
+                    >
+                      Clear Results & Create New Poll
+                    </button>
+                  </div>
+                ) : (
+                  <div className={styles.formSection}>
+                    <div className={styles.formRow}>
+                      <label className={styles.label} htmlFor="question">Enter your question</label>
+                      <select
+                        className={styles.durationSelect}
+                        value={duration}
+                        onChange={e => setDuration(Number(e.target.value))}
+                      >
+                        {DURATION_OPTIONS.map(opt => (
+                          <option key={opt} value={opt}>{opt} seconds</option>
+                        ))}
+                      </select>
+                    </div>
+                    <textarea
+                      id="question"
+                      className={styles.textarea}
+                      placeholder="Type your question here..."
+                      value={question}
+                      onChange={handleQuestionChange}
+                      maxLength={MAX_QUESTION_LENGTH}
+                    />
+                    <div className={styles.charCount}>{question.length}/{MAX_QUESTION_LENGTH}</div>
 
-        {/* Poll History Display (separate from active poll) */}
-        {pollHistory.length > 0 && (
-          <div className={styles.historySection}>
-            <h2 className={styles.historyTitle}>Poll History</h2>
-            {pollHistory.map((poll) => (
-              <div key={poll.id} className={styles.historyPollCard}>
-                <p className={styles.historyQuestion}><strong>Q:</strong> {poll.question}</p>
-                <ul className={styles.historyOptionsList}>
-                  {poll.options.map((option, idx) => (
-                    <li key={idx} className={styles.historyOptionItem}>
-                      {option.text} ({option.isCorrect === true ? 'Correct' : option.isCorrect === false ? 'Incorrect' : 'N/A'})
-                      <span>: {poll.results[option.id] || 0} votes</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className={styles.historyMeta}>Duration: {poll.duration} seconds | Asked: {new Date(poll.timestamp).toLocaleTimeString()}</p>
-              </div>
-            ))}
+                    <div className={styles.optionsSection}>
+                      <div className={styles.optionsHeaderRow}>
+                        <span className={styles.optionsHeader}>Edit Options</span>
+                        <span className={styles.optionsHeader}>Is it Correct?</span>
+                      </div>
+                      {options.map((opt, idx) => (
+                        <div className={styles.optionRow} key={idx}>
+                          <input
+                            className={styles.optionInput}
+                            type="text"
+                            placeholder={`Option ${idx + 1}`}
+                            value={opt.text}
+                            onChange={e => handleOptionChange(idx, e.target.value)}
+                            maxLength={50}
+                          />
+                          <div className={styles.radioGroup}>
+                            <label className={styles.radioLabel}>
+                              <input
+                                type="radio"
+                                name={`correct-${idx}`}
+                                checked={opt.isCorrect === true}
+                                onChange={() => handleCorrectChange(idx, true)}
+                              />
+                              Yes
+                            </label>
+                            <label className={styles.radioLabel}>
+                              <input
+                                type="radio"
+                                name={`correct-${idx}`}
+                                checked={opt.isCorrect === false}
+                                onChange={() => handleCorrectChange(idx, false)}
+                              />
+                              No
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                      <button onClick={addOption} className={styles.addOptionBtn}>+ Add Option</button>
+                    </div>
+                    <button
+                      onClick={handleAskQuestion}
+                      className={styles.askQuestionBtn}
+                      disabled={!canAsk}
+                    >
+                      Ask Question
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        )}
+          <div className={styles.sidePanelToggle}>
+            <button
+              className={`${styles.toggleButton} ${showSidePanel && activeSidePanelTab === 'chat' ? styles.activeTab : ''}`}
+              onClick={() => setShowSidePanel(prev => !prev || activeSidePanelTab !== 'chat' ? (setActiveSidePanelTab('chat'), true) : false)}
+            >
+              Chat
+            </button>
+            <button
+              className={`${styles.toggleButton} ${showSidePanel && activeSidePanelTab === 'participants' ? styles.activeTab : ''}`}
+              onClick={() => setShowSidePanel(prev => !prev || activeSidePanelTab !== 'participants' ? (setActiveSidePanelTab('participants'), true) : false)}
+            >
+              Participants
+            </button>
+          </div>
 
+          {showSidePanel && (
+            <div className={styles.sidePanel}>
+              <div className={`${styles.chatTabContent} ${activeSidePanelTab === 'chat' ? styles.activeTabContent : styles.hiddenTabContent}`}>
+                <Chat socket={socket} senderId={socket?.id} senderName="Teacher" senderRole="teacher" />
+              </div>
+              <div className={`${styles.participantsTabContent} ${activeSidePanelTab === 'participants' ? styles.activeTabContent : styles.hiddenTabContent}`}>
+                <Participants socket={socket} userRole="teacher" />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
